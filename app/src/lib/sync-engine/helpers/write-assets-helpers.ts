@@ -30,7 +30,8 @@ export async function writeAssets(this: SyncEngine, processingQueue: PLibraryPro
 export async function addAsset(this: SyncEngine, asset: Asset) {
     this.logger.info(`Adding asset ${asset.getDisplayName()}`);
 
-    if (this.photosLibrary.verifyAsset(asset)) {
+    const res = this.photosLibrary.verifyAsset(asset);
+    if (res.verified()) {
         this.logger.debug(`Asset ${asset.getDisplayName()} already downloaded`);
         this.emit(SYNC_ENGINE.EVENTS.WRITE_ASSET_COMPLETED, asset.getDisplayName());
         return;

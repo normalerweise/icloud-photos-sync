@@ -240,9 +240,10 @@ export class PhotosLibrary extends EventEmitter {
         await pEvent(writeStream, `close`);
         await fs.promises.utimes(asset.getAssetFilePath(this.assetDir), new Date(asset.modified), new Date(asset.modified)); // Setting modified date on file
 
-        if (!this.verifyAsset(asset)) {
+        const res = this.verifyAsset(asset);
+        if (!res.verified()) {
             await fs.promises.rm(asset.getAssetFilePath(this.assetDir));
-            throw new LibraryError(`Unable to verify asset ${asset.getDisplayName()}`)
+            throw new LibraryError(`Unable to verify asset ${asset.getDisplayName()} ${asset.getPrettyFilename()}: ${JSON.stringify(res)}`)
                 .addContext(`asset`, asset);
         }
 
@@ -264,20 +265,42 @@ export class PhotosLibrary extends EventEmitter {
      * @param asset - The asset to verify
      * @returns True, if the Asset object is present on disk
      */
-    verifyAsset(asset: Asset): boolean {
+    verifyAsset(asset: Asset) {
         this.logger.debug(`Verifying asset ${asset.getDisplayName()}`);
         const location = asset.getAssetFilePath(this.assetDir);
-        return fs.existsSync(location)
-            && asset.verify(fs.readFileSync(location), fs.statSync(location));
+        try {
+            const results = {
+                "exists": fs.existsSync(location),
+                "verifySize": asset.verifySize(fs.readFileSync(location)),
+                "verifyMtime": asset.verifyMTime(fs.statSync(location)),
+                verified() {
+                    return this.exists && this.verifySize && this.verifyMtime;
+                },
+                "error": null,
+            };
+            return results;
+        } catch (error) {
+            this.logger.error(error);
+            const results = {
+                "exists": false,
+                "verifySize": false,
+                "verifyMtime": false,
+                verified() {
+                    return false;
+                },
+                error,
+            };
+            return results;
+        }
     }
 
     /**
-     * Finds the absolute paths of the folder pair for a given album
-     * The path is created, by finding the parent on filesystem. The folder paths do not necessarily exist, the parent path needs to exist.
-     * @param album - The album
-     * @returns A tuple containing the albumNamePath, uuidPath
-     * @throws An error, if the parent path cannot be found
-     */
+         * Finds the absolute paths of the folder pair for a given album
+         * The path is created, by finding the parent on filesystem. The folder paths do not necessarily exist, the parent path needs to exist.
+         * @param album - The album
+         * @returns A tuple containing the albumNamePath, uuidPath
+         * @throws An error, if the parent path cannot be found
+         */
     findAlbumPaths(album: Album): PathTuple {
         // Directory path of the parent folder
         let parentPath = this.photoDataDir;
@@ -299,10 +322,10 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Creates a path tuple containing the full path to the stashed album
-     * @param album - The album within the stash
-     * @returns A PathTuple containing the name based and UUID based path (not validated)
-     */
+         * Creates a path tuple containing the full path to the stashed album
+         * @param album - The album within the stash
+         * @returns A PathTuple containing the name based and UUID based path (not validated)
+         */
     findStashAlbumPaths(album: Album): PathTuple {
         const stashedAlbumNamePath = path.join(this.stashDir, path.basename(album.getSanitizedFilename()));
         const stashedUUIDPath = path.join(this.stashDir, path.basename(`.${album.getUUID()}`));
@@ -310,11 +333,11 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Finds a given album in a given path (as long as it is within the directory tree)
-     * @param albumUUID - The UUID of the album
-     * @param rootPath  - The path in which the album should be searched
-     * @returns The path to the album, relative to the provided path, or the empty string if the album could not be found, or the full path including photoDataDir, if _rootPath was undefined
-     */
+         * Finds a given album in a given path (as long as it is within the directory tree)
+         * @param albumUUID - The UUID of the album
+         * @param rootPath  - The path in which the album should be searched
+         * @returns The path to the album, relative to the provided path, or the empty string if the album could not be found, or the full path including photoDataDir, if _rootPath was undefined
+         */
     findAlbumByUUIDInPath(albumUUID: string, rootPath: string): string {
         this.logger.trace(`Checking ${rootPath} for folder ${albumUUID}`);
         // Get all folders in the path
@@ -354,9 +377,9 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Writes a given album to disk & links the necessary assets
-     * @param album - The album to be written to disk
-     */
+         * Writes a given album to disk & links the necessary assets
+         * @param album - The album to be written to disk
+         */
     writeAlbum(album: Album) {
         const [albumNamePath, uuidPath] = this.findAlbumPaths(album);
 
@@ -377,10 +400,10 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Links the assets for the given album
-     * @param album - Album holding information about the linked assets
-     * @param albumPath - Album path to link assets to
-     */
+         * Links the assets for the given album
+         * @param album - Album holding information about the linked assets
+         * @param albumPath - Album path to link assets to
+         */
     linkAlbumAssets(album: Album, albumPath: string) {
         Object.keys(album.assets).forEach(assetUUID => {
             const linkedAsset = path.format({
@@ -391,7 +414,7 @@ export class PhotosLibrary extends EventEmitter {
                 "dir": this.assetDir,
                 "base": assetUUID,
             });
-            // Getting asset time, in order to update link as well
+                // Getting asset time, in order to update link as well
             const assetTime = fs.statSync(assetPath).mtime;
             // Relative asset path is relative to album, not the linkedAsset
             const relativeAssetPath = path.relative(albumPath, assetPath);
@@ -406,9 +429,9 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Deletes the given album. The folder will only be deleted, if it contains no 'real' files
-     * @param album - The album that needs to be removed
-     */
+         * Deletes the given album. The folder will only be deleted, if it contains no 'real' files
+         * @param album - The album that needs to be removed
+         */
     deleteAlbum(album: Album) {
         this.logger.debug(`Deleting folder ${album.getDisplayName()}`);
         const [albumNamePath, uuidPath] = this.findAlbumPaths(album);
@@ -436,9 +459,9 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Stashes an archived album in case it was deleted/moved in the remote library
-     * @param album - The album that needs to be stashed
-     */
+         * Stashes an archived album in case it was deleted/moved in the remote library
+         * @param album - The album that needs to be stashed
+         */
     stashArchivedAlbum(album: Album) {
         this.logger.debug(`Stashing album ${album.getDisplayName()}`);
         this.movePathTuple(
@@ -448,9 +471,9 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Tries to retrieve a previously stashed archived album
-     * @param album - The album that needs to be retrieved
-     */
+         * Tries to retrieve a previously stashed archived album
+         * @param album - The album that needs to be retrieved
+         */
     retrieveStashedAlbum(album: Album) {
         this.logger.debug(`Retrieving stashed album ${album.getDisplayName()}`);
         this.movePathTuple(
@@ -460,10 +483,10 @@ export class PhotosLibrary extends EventEmitter {
     }
 
     /**
-     * Moves & re-links the path tuple - if named path cannot be found, unlinking will be ignored
-     * @param src - The source of folders
-     * @param dest - The destination of folders
-     */
+         * Moves & re-links the path tuple - if named path cannot be found, unlinking will be ignored
+         * @param src - The source of folders
+         * @param dest - The destination of folders
+         */
     movePathTuple(src: PathTuple, dest: PathTuple) {
         const [srcNamePath, srcUUIDPath] = src;
         const [destNamePath, destUUIDPath] = dest;

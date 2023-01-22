@@ -217,8 +217,8 @@ export class Asset implements PEntity<Asset> {
      * @param fileStats - The file stats object to investigate the metadata
      * @returns True if the modified time matches
      */
-    private verifyMTime(fileStats: Stats): boolean {
-        return this.withinRange(fileStats.mtimeMs, this.modified, 10);
+    verifyMTime(fileStats: Stats): boolean {
+        return this.withinRange(fileStats.mtimeMs, this.modified, 2000);
     }
 
     /**
@@ -238,7 +238,7 @@ export class Asset implements PEntity<Asset> {
      * @param file - The read file
      * @returns True if the size matches
      */
-    private verifySize(file: Buffer): boolean {
+    verifySize(file: Buffer): boolean {
         return file.byteLength === this.size;
     }
 
